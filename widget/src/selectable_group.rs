@@ -90,12 +90,8 @@ where
         tree::State::new(GroupState::default())
     }
 
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.content)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(std::slice::from_ref(&self.content));
+    fn diff(&mut self, tree: &mut Tree) {
+        tree.diff_children(std::slice::from_mut(&mut self.content));
     }
 
     fn size(&self) -> Size<Length> {
@@ -262,22 +258,17 @@ where
                         );
                     }
 
-                    let (anchor, focus, selecting) =
-                        if let Some((start, end)) = word_or_line {
-                            ((focus_idx, start), (focus_idx, end), false)
-                        } else if extend {
-                            (
-                                prior_anchor.unwrap_or((focus_idx, hit_byte)),
-                                (focus_idx, hit_byte),
-                                true,
-                            )
-                        } else {
-                            (
-                                (focus_idx, hit_byte),
-                                (focus_idx, hit_byte),
-                                true,
-                            )
-                        };
+                    let (anchor, focus, selecting) = if let Some((start, end)) = word_or_line {
+                        ((focus_idx, start), (focus_idx, end), false)
+                    } else if extend {
+                        (
+                            prior_anchor.unwrap_or((focus_idx, hit_byte)),
+                            (focus_idx, hit_byte),
+                            true,
+                        )
+                    } else {
+                        ((focus_idx, hit_byte), (focus_idx, hit_byte), true)
+                    };
                     let (a_idx, a_byte) = anchor;
                     let (f_idx, f_byte) = focus;
 
@@ -435,12 +426,10 @@ where
                 key: keyboard::Key::Character(c),
                 modifiers,
                 ..
-            }) if modifiers.command()
-                && matches!(c.as_str(), "a" | "A")
-                && {
-                    let group = tree.state.downcast_ref::<GroupState>();
-                    group.anchor.is_some() || group.focus.is_some()
-                } =>
+            }) if modifiers.command() && matches!(c.as_str(), "a" | "A") && {
+                let group = tree.state.downcast_ref::<GroupState>();
+                group.anchor.is_some() || group.focus.is_some()
+            } =>
             {
                 // Select all selectables in tree order. The anchor
                 // becomes the start of the first one, focus the end
