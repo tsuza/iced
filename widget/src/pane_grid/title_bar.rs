@@ -259,7 +259,7 @@ where
         limits: &layout::Limits,
     ) -> layout::Node {
         let limits = limits.shrink(self.padding);
-        let max_size = limits.max();
+        let max_size = limits.max;
 
         let title_layout = self.content.as_widget_mut().layout(
             &mut tree.children[0],
@@ -339,6 +339,7 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
@@ -360,6 +361,7 @@ where
                     compact.as_widget_mut().operate(
                         &mut tree.children[2],
                         compact_layout,
+                        viewport,
                         renderer,
                         operation,
                     );
@@ -369,6 +371,7 @@ where
                     controls.full.as_widget_mut().operate(
                         &mut tree.children[1],
                         controls_layout,
+                        viewport,
                         renderer,
                         operation,
                     );
@@ -377,6 +380,7 @@ where
                 controls.full.as_widget_mut().operate(
                     &mut tree.children[1],
                     controls_layout,
+                    viewport,
                     renderer,
                     operation,
                 );
@@ -387,6 +391,7 @@ where
             self.content.as_widget_mut().operate(
                 &mut tree.children[0],
                 title_layout,
+                viewport,
                 renderer,
                 operation,
             );
@@ -529,12 +534,17 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         let mut children = layout.children();
-        let padded = children.next()?;
+        let Some(padded) = children.next() else {
+            return Vec::new();
+        };
 
         let mut children = padded.children();
-        let title_layout = children.next()?;
+        let Some(title_layout) = children.next() else {
+            return Vec::new();
+        };
 
         let Self {
             content, controls, ..
@@ -544,46 +554,58 @@ where
         let title_state = states.next().unwrap();
         let controls_state = states.next().unwrap();
 
-        content
-            .as_widget_mut()
-            .overlay(title_state, title_layout, renderer, viewport, translation)
-            .or_else(move || {
-                controls.as_mut().and_then(|controls| {
-                    let controls_layout = children.next()?;
+        let mut overlays = content.as_widget_mut().overlay(
+            title_state,
+            title_layout,
+            renderer,
+            viewport,
+            translation,
+            window,
+        );
 
-                    if title_layout.bounds().width + controls_layout.bounds().width
-                        > padded.bounds().width
-                    {
-                        if let Some(compact) = controls.compact.as_mut() {
-                            let compact_state = states.next().unwrap();
-                            let compact_layout = children.next()?;
+        if let Some(controls) = controls {
+            let Some(controls_layout) = children.next() else {
+                return overlays;
+            };
 
-                            compact.as_widget_mut().overlay(
-                                compact_state,
-                                compact_layout,
-                                renderer,
-                                viewport,
-                                translation,
-                            )
-                        } else {
-                            controls.full.as_widget_mut().overlay(
-                                controls_state,
-                                controls_layout,
-                                renderer,
-                                viewport,
-                                translation,
-                            )
-                        }
-                    } else {
-                        controls.full.as_widget_mut().overlay(
-                            controls_state,
-                            controls_layout,
-                            renderer,
-                            viewport,
-                            translation,
-                        )
-                    }
-                })
-            })
+            if title_layout.bounds().width + controls_layout.bounds().width > padded.bounds().width
+            {
+                if let Some(compact) = &mut controls.compact {
+                    let compact_state = states.next().unwrap();
+                    let Some(compact_layout) = children.next() else {
+                        return overlays;
+                    };
+
+                    overlays.extend(compact.as_widget_mut().overlay(
+                        compact_state,
+                        compact_layout,
+                        renderer,
+                        viewport,
+                        translation,
+                        window,
+                    ));
+                } else {
+                    overlays.extend(controls.full.as_widget_mut().overlay(
+                        controls_state,
+                        controls_layout,
+                        renderer,
+                        viewport,
+                        translation,
+                        window,
+                    ));
+                }
+            } else {
+                overlays.extend(controls.full.as_widget_mut().overlay(
+                    controls_state,
+                    controls_layout,
+                    renderer,
+                    viewport,
+                    translation,
+                    window,
+                ));
+            }
+        }
+
+        overlays
     }
 }

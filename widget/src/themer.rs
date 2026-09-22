@@ -91,12 +91,13 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
         self.content
             .as_widget_mut()
-            .operate(tree, layout, renderer, operation);
+            .operate(tree, layout, viewport, renderer, operation);
     }
 
     fn update(
@@ -171,7 +172,8 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, AnyTheme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, AnyTheme, Renderer>> {
         struct Overlay<'a, Message, Theme, Renderer> {
             theme: &'a Option<Theme>,
             content: overlay::Element<'a, Message, Theme, Renderer>,
@@ -184,16 +186,11 @@ where
             AnyTheme: theme::Base,
             Renderer: crate::core::Renderer,
         {
-            fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
-                self.content.as_overlay_mut().layout(renderer, bounds)
-            }
-
             fn draw(
                 &self,
                 renderer: &mut Renderer,
                 theme: &AnyTheme,
                 style: &renderer::Style,
-                layout: Layout<'_>,
                 cursor: mouse::Cursor,
             ) {
                 let default_theme = theme::Base::default(theme.mode());
@@ -201,68 +198,65 @@ where
 
                 self.content
                     .as_overlay()
-                    .draw(renderer, theme, style, layout, cursor);
+                    .draw(renderer, theme, style, cursor);
             }
 
             fn update(
                 &mut self,
                 event: &Event,
-                layout: Layout<'_>,
                 cursor: mouse::Cursor,
                 renderer: &Renderer,
                 shell: &mut Shell<'_, Message>,
             ) {
                 self.content
                     .as_overlay_mut()
-                    .update(event, layout, cursor, renderer, shell);
+                    .update(event, cursor, renderer, shell);
             }
 
-            fn operate(
-                &mut self,
-                layout: Layout<'_>,
-                renderer: &Renderer,
-                operation: &mut dyn Operation,
-            ) {
-                self.content
-                    .as_overlay_mut()
-                    .operate(layout, renderer, operation);
+            fn operate(&mut self, renderer: &Renderer, operation: &mut dyn Operation) {
+                self.content.as_overlay_mut().operate(renderer, operation);
             }
 
             fn mouse_interaction(
                 &self,
-                layout: Layout<'_>,
                 cursor: mouse::Cursor,
                 renderer: &Renderer,
             ) -> mouse::Interaction {
                 self.content
                     .as_overlay()
-                    .mouse_interaction(layout, cursor, renderer)
+                    .mouse_interaction(cursor, renderer)
             }
 
-            fn overlay<'b>(
-                &'b mut self,
-                layout: Layout<'b>,
+            fn index(&self) -> f32 {
+                self.content.as_overlay().index()
+            }
+
+            fn overlay<'c>(
+                &'c mut self,
                 renderer: &Renderer,
-            ) -> Option<overlay::Element<'b, Message, AnyTheme, Renderer>> {
+            ) -> Vec<overlay::Element<'c, Message, AnyTheme, Renderer>> {
+                let theme = self.theme;
+
                 self.content
                     .as_overlay_mut()
-                    .overlay(layout, renderer)
-                    .map(|content| Overlay {
-                        theme: self.theme,
-                        content,
-                    })
-                    .map(|overlay| overlay::Element::new(Box::new(overlay)))
+                    .overlay(renderer)
+                    .into_iter()
+                    .map(|content| overlay::Element::new(Box::new(Overlay { theme, content })))
+                    .collect()
             }
         }
 
         self.content
             .as_widget_mut()
-            .overlay(tree, layout, renderer, viewport, translation)
-            .map(|content| Overlay {
-                theme: &self.theme,
-                content,
+            .overlay(tree, layout, renderer, viewport, translation, window)
+            .into_iter()
+            .map(|content| {
+                overlay::Element::new(Box::new(Overlay {
+                    theme: &self.theme,
+                    content,
+                }))
             })
-            .map(|overlay| overlay::Element::new(Box::new(overlay)))
+            .collect()
     }
 }
 

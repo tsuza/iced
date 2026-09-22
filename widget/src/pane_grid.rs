@@ -81,7 +81,7 @@ pub use title_bar::TitleBar;
 use crate::container;
 use crate::core::layout;
 use crate::core::mouse;
-use crate::core::overlay::{self, Group};
+use crate::core::overlay;
 use crate::core::renderer;
 use crate::core::touch;
 use crate::core::widget;
@@ -436,10 +436,11 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
-        operation.container(None, layout.bounds());
+        operation.container(None, layout.bounds(), viewport);
         operation.traverse(&mut |operation| {
             self.panes
                 .iter_mut()
@@ -452,7 +453,7 @@ where
                         .is_none_or(|maximized| **pane == maximized)
                 })
                 .for_each(|(((_, content), state), layout)| {
-                    content.operate(state, layout, renderer, operation);
+                    content.operate(state, layout, viewport, renderer, operation);
                 });
         });
     }
@@ -879,42 +880,40 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<Memory>();
         let picked_pane = state.action.picked_pane();
 
-        let children = self
-            .panes
+        self.panes
             .iter()
             .copied()
             .zip(&mut self.contents)
             .zip(&mut tree.children)
             .zip(layout.children())
-            .filter_map(|(((pane, content), tree), layout)| {
+            .flat_map(|(((pane, content), tree), layout)| {
                 if self
                     .internal
                     .maximized()
                     .is_some_and(|maximized| maximized != pane)
                 {
-                    return None;
+                    return Vec::new();
                 }
 
                 if let Some((picked_pane, origin)) = picked_pane
                     && picked_pane == pane
                 {
-                    return Some(overlay::Element::new(Box::new(PickedPane {
+                    return vec![overlay::Element::new(Box::new(PickedPane {
                         origin,
                         content,
                         tree,
                         layout,
-                    })));
+                    }))];
                 }
 
-                content.overlay(tree, layout, renderer, viewport, translation)
+                content.overlay(tree, layout, renderer, viewport, translation, window)
             })
-            .collect::<Vec<_>>();
-
-        (!children.is_empty()).then(|| Group::with_children(children).overlay())
+            .collect()
     }
 }
 
@@ -929,23 +928,28 @@ where
     layout: Layout<'a>,
 }
 
+impl<'a, 'b, Message, Theme, Renderer> PickedPane<'a, 'b, Message, Theme, Renderer>
+where
+    Theme: container::Catalog,
+    Renderer: core::Renderer,
+{
+    fn bounds(&self) -> Rectangle {
+        // TODO: Mouse translation
+        Rectangle::new(self.origin, self.layout.bounds().size())
+    }
+}
+
 impl<'a, 'b, Message, Theme, Renderer> core::Overlay<Message, Theme, Renderer>
     for PickedPane<'a, 'b, Message, Theme, Renderer>
 where
     Theme: container::Catalog,
     Renderer: core::Renderer,
 {
-    fn layout(&mut self, _renderer: &Renderer, _bounds: Size) -> layout::Node {
-        // TODO: Mouse translation
-        layout::Node::new(self.layout.bounds().size()).move_to(self.origin)
-    }
-
     fn draw(
         &self,
         renderer: &mut Renderer,
         theme: &Theme,
         style: &renderer::Style,
-        _layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
         let cursor_position = cursor.position().unwrap_or_default();
@@ -956,16 +960,18 @@ where
             Vector::ZERO
         };
 
-        renderer.with_translation(translation, |renderer| {
-            self.content.draw(
-                self.tree,
-                renderer,
-                theme,
-                style,
-                self.layout,
-                mouse::Cursor::Unavailable,
-                &Rectangle::INFINITE,
-            );
+        renderer.with_layer(self.bounds(), |renderer| {
+            renderer.with_translation(translation, |renderer| {
+                self.content.draw(
+                    self.tree,
+                    renderer,
+                    theme,
+                    style,
+                    self.layout,
+                    mouse::Cursor::Unavailable,
+                    &Rectangle::INFINITE,
+                );
+            });
         });
     }
 }

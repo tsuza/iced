@@ -76,7 +76,7 @@ where
         limits: &layout::Limits,
     ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
-        let size = limits.max();
+        let size = limits.bounds();
 
         self.content = (self.view)(size);
         tree.diff_children(std::slice::from_mut(&mut self.content));
@@ -154,12 +154,14 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
         self.content.as_widget_mut().operate(
             &mut tree.children[0],
             layout.children().next().unwrap(),
+            viewport,
             renderer,
             operation,
         );
@@ -172,13 +174,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'a, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
             layout.children().next().unwrap(),
             renderer,
             viewport,
             translation,
+            window,
         )
     }
 }

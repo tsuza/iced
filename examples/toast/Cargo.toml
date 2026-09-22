@@ -6,5 +6,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
+iced.features = ["tokio"]
 iced.workspace = true
-iced.features = ["advanced"]
+tokio.features = ["time"]
+
+tokio.workspace = true
+unicode-segmentation.workspace = true

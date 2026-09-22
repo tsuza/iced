@@ -18,8 +18,8 @@
 //! Run with `cargo run -p text_selection_test`.
 
 use iced::widget::{
-    SelectableGroup, column, container, markdown, rich_text, row,
-    scrollable, selectable_group, span, text, text_editor,
+    SelectableGroup, column, container, markdown, rich_text, row, scrollable, selectable_group,
+    span, text, text_editor,
 };
 use iced::{Element, Fill, Never, Theme};
 
@@ -72,13 +72,13 @@ impl Test {
         let settings = markdown::Settings {
             selectable: true,
             group_selection: true,
-            ..markdown::Settings::with_style(&self.theme)
+            ..Default::default()
         };
 
-        let md_a: Element<'_, _> = markdown::view(self.md_a.items(), settings)
-            .map(Message::LinkClicked);
-        let md_b: Element<'_, _> = markdown::view(self.md_b.items(), settings)
-            .map(Message::LinkClicked);
+        let md_a: Element<'_, _> =
+            markdown::view(self.md_a.items(), settings, self.theme()).map(Message::LinkClicked);
+        let md_b: Element<'_, _> =
+            markdown::view(self.md_b.items(), settings, self.theme()).map(Message::LinkClicked);
 
         // Custom selectable_group mixing plain text and rich_text in a
         // column, so coordination across heterogeneous children gets
@@ -93,8 +93,7 @@ impl Test {
 
         let mixed_group: SelectableGroup<'_, Never, _> = selectable_group(
             column![
-                text("Mixed group · this paragraph is a plain text(...) widget.")
-                    .selectable(true),
+                text("Mixed group · this paragraph is a plain text(...) widget.").selectable(true),
                 mixed_rich,
                 text(
                     "And one more text(...) line — try ArrowDown from the \
@@ -130,9 +129,7 @@ impl Test {
 
         // A single long logical line forced to wrap: triple-click should
         // select all of it, not stop at the soft wrap boundary.
-        let wrapped_logical_line = text(WRAPPED_LOGICAL_LINE)
-            .width(240)
-            .selectable(true);
+        let wrapped_logical_line = text(WRAPPED_LOGICAL_LINE).width(240).selectable(true);
 
         let editor = text_editor(&self.editor)
             .placeholder("text_editor — Ctrl+A here must NOT spill into the views above")
@@ -175,8 +172,14 @@ impl Test {
                 mixed_group.into(),
             ),
             row![
-                panel("standalone text(...).selectable(true)", standalone_text.into()),
-                panel("standalone rich_text![...].selectable(true)", standalone_rich.into()),
+                panel(
+                    "standalone text(...).selectable(true)",
+                    standalone_text.into()
+                ),
+                panel(
+                    "standalone rich_text![...].selectable(true)",
+                    standalone_rich.into()
+                ),
             ]
             .spacing(12)
             .height(140),
@@ -248,8 +251,7 @@ Any another one in here...
 Third one
 Lets add a final fancy line. ok bye";
 
-const WRAPPED_LOGICAL_LINE: &str =
-    "This is one long logical line with no newlines, so it wraps across \
+const WRAPPED_LOGICAL_LINE: &str = "This is one long logical line with no newlines, so it wraps across \
      several visual rows. Triple-clicking anywhere on it should select \
      the entire logical line at once, not just the wrapped row.";
 

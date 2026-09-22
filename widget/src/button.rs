@@ -244,14 +244,16 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
-        operation.container(None, layout.bounds());
+        operation.container(None, layout.bounds(), viewport);
         operation.traverse(&mut |operation| {
             self.content.as_widget_mut().operate(
                 &mut tree.children[0],
                 layout.children().next().unwrap(),
+                viewport,
                 renderer,
                 operation,
             );
@@ -415,13 +417,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
             layout.children().next().unwrap(),
             renderer,
             viewport,
             translation,
+            window,
         )
     }
 }

@@ -113,12 +113,17 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn core::widget::Operation,
     ) {
-        self.content
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
+        self.content.as_widget_mut().operate(
+            &mut tree.children[0],
+            layout,
+            viewport,
+            renderer,
+            operation,
+        );
     }
 
     fn draw(
@@ -176,6 +181,7 @@ where
             &mut self.content,
             &mut tree.children[0],
             layout,
+            viewport,
             renderer,
             |_, _, state| state.set_externally_managed(true),
         );
@@ -200,6 +206,7 @@ where
                         &mut self.content,
                         &mut tree.children[0],
                         layout,
+                        viewport,
                         renderer,
                         |index, bounds, state| {
                             if hit_index.is_some() {
@@ -237,6 +244,7 @@ where
                             &mut self.content,
                             &mut tree.children[0],
                             layout,
+                            viewport,
                             renderer,
                             |index, _, state| {
                                 if index != focus_idx {
@@ -276,6 +284,7 @@ where
                         &mut self.content,
                         &mut tree.children[0],
                         layout,
+                        viewport,
                         renderer,
                         |index, _, state| {
                             let len = state.text_len();
@@ -298,6 +307,7 @@ where
                         &mut self.content,
                         &mut tree.children[0],
                         layout,
+                        viewport,
                         renderer,
                         |_, _, state| state.set_selection(None),
                     );
@@ -323,6 +333,7 @@ where
                         &mut self.content,
                         &mut tree.children[0],
                         layout,
+                        viewport,
                         renderer,
                         |index, bounds, state| {
                             let len = state.text_len();
@@ -350,6 +361,7 @@ where
                             &mut self.content,
                             &mut tree.children[0],
                             layout,
+                            viewport,
                             renderer,
                             |index, _, state| {
                                 let len = state.text_len();
@@ -382,6 +394,7 @@ where
                     &mut self.content,
                     &mut tree.children[0],
                     layout,
+                    viewport,
                     renderer,
                     |_, _, state| {
                         if let Some((a, b)) = state.selection()
@@ -403,6 +416,7 @@ where
                     &mut self.content,
                     &mut tree.children[0],
                     layout,
+                    viewport,
                     renderer,
                     |_, _, state| {
                         if let Some((a, b)) = state.selection() {
@@ -444,6 +458,7 @@ where
                     &mut self.content,
                     &mut tree.children[0],
                     layout,
+                    viewport,
                     renderer,
                     |_, _, state| {
                         let len = state.text_len();
@@ -477,6 +492,7 @@ where
                         &mut self.content,
                         &mut tree.children[0],
                         layout,
+                        viewport,
                         renderer,
                         |_, _, state| state.set_selection(None),
                     );
@@ -514,6 +530,7 @@ where
                             &mut self.content,
                             tree,
                             layout,
+                            viewport,
                             renderer,
                             action,
                             modifiers.shift(),
@@ -557,6 +574,7 @@ fn apply_keyboard_action<Message, Theme, Renderer>(
     content: &mut Element<'_, Message, Theme, Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
+    viewport: &Rectangle,
     renderer: &Renderer,
     action: KeyAction,
     extend: bool,
@@ -585,6 +603,7 @@ fn apply_keyboard_action<Message, Theme, Renderer>(
         content,
         &mut tree.children[0],
         layout,
+        viewport,
         renderer,
         |index, bounds, state| {
             lens.push(state.text_len());
@@ -634,7 +653,7 @@ fn apply_keyboard_action<Message, Theme, Renderer>(
             }
         }
         KeyAction::Line(dir) => hit_test_sibling(
-            content, tree, layout, renderer, focus_idx, dir, target_x, &lens,
+            content, tree, layout, viewport, renderer, focus_idx, dir, target_x, &lens,
         ),
         KeyAction::LineEdge(_) => None,
         KeyAction::DocEdge(dir) => {
@@ -665,6 +684,7 @@ fn apply_keyboard_action<Message, Theme, Renderer>(
         content,
         &mut tree.children[0],
         layout,
+        viewport,
         renderer,
         |index, bounds, state| {
             let len = state.text_len();
@@ -696,6 +716,7 @@ fn hit_test_sibling<Message, Theme, Renderer>(
     content: &mut Element<'_, Message, Theme, Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
+    viewport: &Rectangle,
     renderer: &Renderer,
     focus_idx: usize,
     dir: i32,
@@ -721,6 +742,7 @@ where
         content,
         &mut tree.children[0],
         layout,
+        viewport,
         renderer,
         |index, bounds, state| {
             if index != target_idx {
@@ -792,6 +814,7 @@ fn visit_selectables<Message, Theme, Renderer, F>(
     content: &mut Element<'_, Message, Theme, Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
+    viewport: &Rectangle,
     renderer: &Renderer,
     callback: F,
 ) where
@@ -828,7 +851,7 @@ fn visit_selectables<Message, Theme, Renderer, F>(
     };
     content
         .as_widget_mut()
-        .operate(tree, layout, renderer, &mut visitor);
+        .operate(tree, layout, viewport, renderer, &mut visitor);
 }
 
 impl<'a, Link, Message, Theme, Renderer> From<SelectableGroup<'a, Link, Message, Theme, Renderer>>

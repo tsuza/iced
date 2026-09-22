@@ -7,34 +7,41 @@ use crate::text::editor;
 use crate::text::paragraph;
 use crate::text::{self, Alignment, Editor, LineHeight, Position, Text, Wrapping};
 use crate::widget::operation::{Focusable, TextInput};
-use crate::{Color, Event, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell};
+use crate::{Color, Event, Font, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell};
+
+use unicode_segmentation::UnicodeSegmentation;
 
 use std::sync::Arc;
 
+const SECURE_CHAR: char = '•';
+
 pub struct Input<R: text::Renderer> {
     editor: R::Editor,
+    secure: Option<R::Editor>,
     state: editor::State,
     placeholder: paragraph::Plain<R::Paragraph>,
     padding: Padding,
     multiline: Option<Wrapping>,
 }
 
-pub struct Layout<'a, Font> {
+pub struct Layout<'a> {
     pub width: Length,
     pub height: Length,
     pub padding: Padding,
     pub placeholder: &'a str,
     pub font: Option<Font>,
     pub size: Option<Pixels>,
-    pub line_height: LineHeight,
+    pub line_height: Option<LineHeight>,
     pub alignment: Alignment,
     pub multiline: Option<Wrapping>,
+    pub is_secure: bool,
 }
 
 impl<R: text::Renderer> Input<R> {
     pub fn new() -> Self {
         Self {
             editor: R::Editor::with_text(""),
+            secure: None,
             state: editor::State::new(),
             placeholder: paragraph::Plain::default(),
             padding: Padding::default(),
@@ -56,13 +63,18 @@ impl<R: text::Renderer> Input<R> {
 
     pub fn overwrite(&mut self, value: &str) {
         self.editor.overwrite(value);
+
+        if let Some(secure) = &mut self.secure {
+            let secured = protect(value, self.multiline.is_some());
+            secure.overwrite(&secured);
+        }
     }
 
     pub fn layout(
         &mut self,
         renderer: &R,
         limits: &layout::Limits,
-        layout: Layout<'_, R::Font>,
+        layout: Layout<'_>,
     ) -> layout::Node {
         self.padding = layout.padding;
         self.multiline = layout.multiline;
@@ -72,36 +84,41 @@ impl<R: text::Renderer> Input<R> {
             .height(layout.height)
             .shrink(layout.padding);
 
-        let font = layout.font.unwrap_or_else(|| renderer.default_font());
-        let size = layout.size.unwrap_or_else(|| renderer.default_size());
+        let font = layout.font.unwrap_or_else(|| renderer.font());
+        let size = layout.size.unwrap_or_else(|| renderer.text_size());
+        let line_height = layout.line_height.unwrap_or_else(|| renderer.line_height());
         let hint_factor = renderer.hint_factor();
 
-        self.editor.update(
-            limits.max(),
+        if layout.is_secure {
+            if self.secure.is_none() {
+                let value = self.value();
+                let secured = protect(&value, layout.multiline.is_some());
+
+                self.secure = Some(text::Editor::with_text(&secured));
+            }
+        } else {
+            self.secure = None;
+        }
+
+        let editor = self.secure.as_mut().unwrap_or(&mut self.editor);
+
+        editor.update(
+            limits.bounds(),
             font,
             size,
-            layout.line_height,
+            line_height,
             layout.multiline.unwrap_or(text::Wrapping::None),
             layout.alignment,
             hint_factor,
-            &mut text::highlighter::PlainText,
+            &mut text::parser::PlainText,
         );
 
-        let bounds = match layout.height {
-            Length::Fill
-            | Length::FillPortion(_)
-            | Length::Fixed(_)
-            | Length::Bounded { .. }
-            | Length::Fluid(_) => limits.max(),
-            Length::Shrink | Length::Fit => {
-                limits.resolve(layout.width, layout.height, self.editor.min_bounds())
-            }
-        };
+        let bounds = limits.resolve(layout.width, layout.height, editor.min_bounds());
 
         let _ = self.placeholder.update(Text {
             content: layout.placeholder,
             font,
-            line_height: layout.line_height,
+            line_height,
             bounds,
             size,
             align_x: layout.alignment,
@@ -132,7 +149,11 @@ impl<R: text::Renderer> Input<R> {
             match update {
                 editor::Update::Action(action) => {
                     let (action, is_paste) = match action {
-                        editor::Action::Edit(editor::Edit::Enter) if !is_multiline => {
+                        editor::Action::Edit(editor::Edit::Enter)
+                        | editor::Action::Move(editor::Motion::Up)
+                        | editor::Action::Move(editor::Motion::Down)
+                            if !is_multiline =>
+                        {
                             return None;
                         }
                         editor::Action::Edit(editor::Edit::Paste(text)) => (
@@ -157,7 +178,9 @@ impl<R: text::Renderer> Input<R> {
                         shell.request_redraw();
                     }
 
-                    return is_edit.then_some(Edit { is_paste });
+                    return is_edit.then_some(Edit {
+                        has_pasted: is_paste,
+                    });
                 }
                 editor::Update::Focus | editor::Update::InputMethod => {
                     shell.request_redraw();
@@ -188,7 +211,8 @@ impl<R: text::Renderer> Input<R> {
                     for update in updates {
                         if let Some(new_edit) = apply(editor, shell, update, is_multiline) {
                             edit = Some(Edit {
-                                is_paste: edit.unwrap_or_default().is_paste || new_edit.is_paste,
+                                has_pasted: edit.unwrap_or_default().has_pasted
+                                    || new_edit.has_pasted,
                             });
                         }
                     }
@@ -200,16 +224,82 @@ impl<R: text::Renderer> Input<R> {
             None
         }
 
-        let update = self.state.update(
-            &self.editor,
-            event,
-            bounds,
-            self.padding,
-            cursor,
-            key_binding,
-        )?;
+        let editor = self.secure.as_ref().unwrap_or(&self.editor);
 
-        apply(&mut self.editor, shell, update, self.multiline.is_some())
+        let update = self
+            .state
+            .update(editor, event, bounds, self.padding, cursor, key_binding)?;
+
+        if let Some(secure) = &mut self.secure {
+            fn apply_secure<Message>(
+                editor: &mut impl Editor,
+                update: &editor::Update<Message>,
+                is_multiline: bool,
+            ) {
+                match update {
+                    editor::Update::Action(action) => {
+                        let action = match action {
+                            editor::Action::Edit(editor::Edit::Insert(_)) => {
+                                editor::Action::Edit(editor::Edit::Insert(SECURE_CHAR))
+                            }
+                            editor::Action::Edit(editor::Edit::Paste(text)) => {
+                                let text = protect(text, is_multiline);
+
+                                editor::Action::Edit(editor::Edit::Paste(Arc::new(text)))
+                            }
+                            action => action.clone(),
+                        };
+
+                        editor.perform(action);
+                    }
+                    editor::Update::Sequence(updates) => {
+                        for update in updates {
+                            apply_secure(editor, update, is_multiline);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            apply_secure(secure, &update, self.multiline.is_some());
+
+            match &update {
+                editor::Update::Action(action) if !action.is_edit() => {
+                    fn translate(
+                        editor: &impl text::Editor,
+                        position: text::Position,
+                    ) -> text::Position {
+                        let Some(line) = editor.line(position.line) else {
+                            return text::Position { line: 0, index: 0 };
+                        };
+
+                        let grapheme = position.index / SECURE_CHAR.len_utf8();
+                        let index = line.text.graphemes(true).take(grapheme).map(str::len).sum();
+
+                        text::Position {
+                            line: position.line,
+                            index,
+                        }
+                    }
+
+                    let cursor = secure.cursor();
+
+                    self.editor.move_to(editor::Cursor {
+                        position: translate(&self.editor, cursor.position),
+                        selection: cursor
+                            .selection
+                            .map(|selection| translate(&self.editor, selection)),
+                    });
+
+                    shell.request_redraw();
+
+                    None
+                }
+                _ => apply(&mut self.editor, shell, update, self.multiline.is_some()),
+            }
+        } else {
+            apply(&mut self.editor, shell, update, self.multiline.is_some())
+        }
     }
 
     pub fn draw(&self, renderer: &mut R, bounds: Rectangle, viewport: Rectangle, style: Style) {
@@ -219,7 +309,9 @@ impl<R: text::Renderer> Input<R> {
             return;
         };
 
-        if self.editor.is_empty() {
+        let editor = self.secure.as_ref().unwrap_or(&self.editor);
+
+        if editor.is_empty() {
             let anchor = text_bounds.anchor(
                 self.placeholder.min_bounds(),
                 self.placeholder.align_x(),
@@ -235,7 +327,7 @@ impl<R: text::Renderer> Input<R> {
         }
 
         self.state.draw(
-            &self.editor,
+            editor,
             renderer,
             text_bounds.position(),
             clip_bounds,
@@ -309,5 +401,16 @@ impl<R: text::Renderer> TextInput for Input<R> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Edit {
-    pub is_paste: bool,
+    pub has_pasted: bool,
+}
+
+fn protect(text: &str, is_multiline: bool) -> String {
+    if is_multiline {
+        text.lines()
+            .map(|line| line.graphemes(true).map(|_| SECURE_CHAR).collect())
+            .collect::<Vec<String>>()
+            .join("\n")
+    } else {
+        text.graphemes(true).map(|_| SECURE_CHAR).collect()
+    }
 }

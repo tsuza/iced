@@ -186,12 +186,17 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
-        self.content
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
+        self.content.as_widget_mut().operate(
+            &mut tree.children[0],
+            layout,
+            viewport,
+            renderer,
+            operation,
+        );
     }
 
     fn update(
@@ -273,13 +278,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
             layout,
             renderer,
             viewport,
             translation,
+            window,
         )
     }
 }

@@ -247,14 +247,22 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
-        operation.container(self.id.as_ref(), layout.bounds());
+        let viewport = if self.clip {
+            layout.bounds().intersection(viewport).unwrap_or_default()
+        } else {
+            *viewport
+        };
+
+        operation.container(self.id.as_ref(), layout.bounds(), &viewport);
         operation.traverse(&mut |operation| {
             self.content.as_widget_mut().operate(
                 tree,
                 layout.children().next().unwrap(),
+                &viewport,
                 renderer,
                 operation,
             );
@@ -340,13 +348,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             tree,
             layout.children().next().unwrap(),
             renderer,
             viewport,
             translation,
+            window,
         )
     }
 }

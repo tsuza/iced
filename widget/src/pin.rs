@@ -138,7 +138,7 @@ where
     ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
 
-        let available = limits.max() - Size::new(self.position.x, self.position.y);
+        let available = limits.bounds() - Size::new(self.position.x, self.position.y);
 
         let node = self
             .content
@@ -154,12 +154,14 @@ where
         &mut self,
         tree: &mut widget::Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
         self.content.as_widget_mut().operate(
             tree,
             layout.children().next().unwrap(),
+            viewport,
             renderer,
             operation,
         );
@@ -235,13 +237,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             tree,
             layout.children().next().unwrap(),
             renderer,
             viewport,
             translation,
+            window,
         )
     }
 }

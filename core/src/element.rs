@@ -305,10 +305,12 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
-        self.widget.operate(tree, layout, renderer, operation);
+        self.widget
+            .operate(tree, layout, viewport, renderer, operation);
     }
 
     fn update(
@@ -370,12 +372,15 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, B, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, B, Theme, Renderer>> {
         let mapper = &self.mapper;
 
         self.widget
-            .overlay(tree, layout, renderer, viewport, translation)
+            .overlay(tree, layout, renderer, viewport, translation, window)
+            .into_iter()
             .map(move |overlay| overlay.map(mapper))
+            .collect()
     }
 }
 
@@ -427,12 +432,13 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn widget::Operation,
     ) {
         self.element
             .widget
-            .operate(tree, layout, renderer, operation);
+            .operate(tree, layout, viewport, renderer, operation);
     }
 
     fn update(
@@ -512,10 +518,11 @@ where
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        window: Size,
+    ) -> Vec<overlay::Element<'b, Message, Theme, Renderer>> {
         self.element
             .widget
-            .overlay(tree, layout, renderer, viewport, translation)
+            .overlay(tree, layout, renderer, viewport, translation, window)
     }
 }
 
